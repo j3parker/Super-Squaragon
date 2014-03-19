@@ -1,0 +1,8 @@
+MEMORY {
+  ROM0: start = $C000, size = $4000, file = "ss2048.prg";
+}
+
+SEGMENTS {
+  CODE: load = ROM0, type = ro;
+  VECTORS: load = ROM0, type = ro, start = $FFFA;
+}
