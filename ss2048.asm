@@ -384,19 +384,6 @@ NMI:
   STA $2003
   LDA #$02
   STA $4014
-
-  ldx #$00
-@Loop:
-  lda $0203, x
-  clc
-;  adc #$01
-  sta $0203, x
-  txa
-  clc
-  adc #$04
-  tax
-  cpx #$10
-  bne @Loop
   rti
 
 .segment "VECTORS"
