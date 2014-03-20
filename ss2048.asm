@@ -27,14 +27,27 @@ _Sprites:
   .byte $90, $12, $01, $A8
   .byte $90, $13, $01, $B0
 
+  ; This is the power of two for the tile modulo 3, multiplied by 8.
+  ; It gives us the offset into the bg pattern table to get our bg tiles
+  ; for a cell. There are 8 tiles to build up one cell.
+  ; E.g. tile 128 = 2^7, 7%3 == 1 so we use want to use color 1 of the palette
+  ; determined by _PaletteChoice. The bg tiles are stored at an offset of 0x08
+  ; from the first cell bg tile.
 _PaletteIndex:
   .byte $00, $08, $10, $00, $08, $10, $00, $08, $10, $00, $08
+
+  ; This is the power of two for the tile divided by 3, and then those
+  ; two bits are replicated 4 times. Each two bits sets the palette of a
+  ; 16x16 region but we use 32x32 meta-tiles so we want the same palette for
+  ; all 4 tiles. E.g. 7/3 = 2 = 0b10 --> 0b10101010 = 0xAA, so tile 128=2^7
+  ; uses palette 2 (the third palette) and therefore we write 0xAA to the
+  ; attribute table.
 _PaletteChoice:
   .byte $00, $00, $00, $55, $55, $55, $AA, $AA, $AA, $FF, $FF
 
 .define RNG_SEED $20
 
-RESET:
+Boot:
   sei
   cld
   ldx #$40
@@ -68,6 +81,7 @@ vblankwait2:      ; Second wait for vblank, PPU is ready after this
   BIT $2002
   BPL vblankwait2
 
+  ; We will want to change this based on the level later
 LoadPalettes:
   lda #$3F
   sta $2006
@@ -81,13 +95,15 @@ LoadPalettes:
   cpx #$20
   bne @Loop
 
+  ; Sets each bg tile to the 4th solid color of the palette
+  ; (Has to deal with 16 bit arithmetic because there are 960 tiles)
 ClearBackground:
   lda #$20
   sta $2006
   lda #$00
   sta $2006
   tax
-  ldy #$30
+  ldy #$30 ; This tile is dithered between color 1 and 3
 @Loop:
   sty $2007
   inx
@@ -98,6 +114,83 @@ ClearBackground:
   bne @Loop
   cpx #$30
   bne @Loop
+
+  jsr DrawOuterBorder
+
+  ; Loads a checkerboard pattern into the attribute table (palette choices)
+InitAttrTable:
+  lda #$23
+  sta $2006
+  lda #$C0
+  sta $2006
+  ldx #$00
+  lda #%11001001 ; Make this $FF to choose only the last palette
+@Loop:
+  sta $2007
+  inx
+  cpx #$40
+  bne @Loop
+
+  ; Update all tiles to be empty
+  lda #$00
+  ldy #$00
+@Row:
+  ldx #$00
+@Column:
+  jsr UpdateTile
+  inx
+  cpx #$04
+  bne @Column
+  iny
+  cpy #$04
+  bne @Row
+
+
+  ; This is some hardcoded setting of coloured tiles
+  lda #$02
+  ldx #$01
+  ldy #$00
+  jsr UpdateTile
+  lda #$01
+  ldx #$00
+  ldy #$00
+  jsr UpdateTile
+  lda #$05
+  ldx #$03
+  ldy #$02
+  jsr UpdateTile
+
+LoadSprites:
+  ldx #$00
+@Loop:
+  lda _Sprites, x
+  sta $0200, x
+  inx
+  cpx #$30
+  bne @Loop
+
+  ; urg, figure out scrolling...
+  lda #$00
+  sta $2005
+  lda #$FF
+  sta $2005
+  lda #$00
+  sta $2000
+
+  lda #%10010000
+  sta $2000
+
+  lda #%00011010
+  sta $2001
+
+
+@Forever:
+  jmp @Forever
+
+; Draws a 1 pixel border around the grid cells.
+; Each cell is surrounded by 1px of black, so two adjacent cells get a 2 pixel
+; border. We draw a seperate border around the outside to get uniformity.
+DrawOuterBorder:
 
 TopRow:
   lda #$20
@@ -143,74 +236,7 @@ BottomRow:
   ldy #$18
   jsr InitVertBorder
 
-InitAttrTable:
-  lda #$23
-  sta $2006
-  lda #$C0
-  sta $2006
-  ldx #$00
-  lda #%11001001
-@Loop:
-  sta $2007
-  inx
-  cpx #$40
-  bne @Loop
-
-  lda #$00
-  ldy #$00
-@Row:
-  ldx #$00
-@Column:
-  jsr UpdateTile
-  inx
-  cpx #$04
-  bne @Column
-  iny
-  cpy #$04
-  bne @Row
-
-
-  ; Temp, load coloured tile
-  lda #$02
-  ldx #$01
-  ldy #$00
-  jsr UpdateTile
-  lda #$01
-  ldx #$00
-  ldy #$00
-  jsr UpdateTile
-  lda #$05
-  ldx #$03
-  ldy #$02
-  jsr UpdateTile
-
-LoadSprites:
-  ldx #$00
-@Loop:
-  lda _Sprites, x
-  sta $0200, x
-  inx
-  cpx #$30
-  bne @Loop
-
-  ; urg, figure out scrolling...
-  lda #$00
-  sta $2005
-  lda #$FF
-  sta $2005
-  lda #$00
-  sta $2000
-
-  lda #%10010000
-  sta $2000
-
-  lda #%00011010
-  sta $2001
-
-
-@Forever:
-  JMP @Forever
-
+; Helper function for DrawOuterBorder
 InitVertBorder:
   pha
   clc
@@ -230,6 +256,9 @@ InitVertBorder:
   bne @Loop
   pla
   rts
+
+
+
 
 ; Inputs:
 ;   A - color ($00, $01, $02)
@@ -353,7 +382,7 @@ Middle:
   adc #$07
   sta $2007
   tay
-  lda $03 ; fuck what was this XXX
+  lda $03
   ror
   ror
   ror
@@ -378,15 +407,15 @@ Bottom:
   sbc #$05
   rts
 
-NMI:
+Vsync:
   lda $2002
-  LDA #$00
-  STA $2003
-  LDA #$02
-  STA $4014
+  lda #$00
+  sta $2003
+  lda #$02
+  sta $4014
   rti
 
 .segment "VECTORS"
-  .word NMI
-  .word RESET
+  .word Vsync
+  .word Boot
   .word 0
