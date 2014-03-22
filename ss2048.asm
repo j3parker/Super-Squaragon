@@ -35,9 +35,10 @@ _PaletteChoice:
 .define CPUFlag                    #$02
 
 .define PlaidStage_State           $11
-.define PlaidStage_UpdateUpperFlag #$00
-.define PlaidStage_UpdateLowerFlag #$01
-.define PlaidStage_IdleFlag        #$02
+.define PlaidStage_InitFlag        #$00
+.define PlaidStage_UpdateUpperFlag #$01
+.define PlaidStage_UpdateLowerFlag #$02
+.define PlaidStage_IdleFlag        #$03
 
 
 .define Grid        $A0
@@ -82,8 +83,25 @@ vblankwait2:      ; Second wait for vblank, PPU is ready after this
   BIT $2002
   BPL vblankwait2
 
+  lda PlaidStageFlag
+  sta Stage
+  lda PlaidStage_InitFlag
+  sta PlaidStage_State
+
+  jsr PlaidStage_Init
+
+  lda #%10010000
+  sta $2000
+
+  lda #%00011010
+  sta $2001
+
+@Forever:
+  clc
+  jmp @Forever
+
   ; We will want to change this based on the level later
-LoadPalettes:
+PlaidStage_LoadPalettes:
   lda #$3F
   sta $2006
   lda #$00
@@ -95,10 +113,11 @@ LoadPalettes:
   inx
   cpx #$20
   bne @Loop
+  rts
 
   ; Sets each bg tile to the 4th solid color of the palette
   ; (Has to deal with 16 bit arithmetic because there are 960 tiles)
-ClearBackground:
+PlaidStage_LoadBackground:
   lda #$20
   sta $2006
   lda #$00
@@ -116,40 +135,25 @@ ClearBackground:
   cpx #$30
   bne @Loop
 
-  jsr DrawOuterBorder
+  ldy #%11001001 ; Make this $FF to choose only the last palette
 
+  ; Init the attr table
   ; Loads a checkerboard pattern into the attribute table (palette choices)
-InitAttrTable:
+; Y - pattern to store into the attr table
   lda #$23
   sta $2006
   lda #$C0
   sta $2006
   ldx #$00
-  lda #%11001001 ; Make this $FF to choose only the last palette
-@Loop:
-  sta $2007
+@AttrLoop:
+  sty $2007
   inx
   cpx #$40
-  bne @Loop
+  bne @AttrLoop
 
-  jsr LoadSprites
+  rts
 
-  lda #%10010000
-  sta $2000
-
-  lda #%00011010
-  sta $2001
-
-  lda PlaidStageFlag
-  sta Stage
-  lda PlaidStage_UpdateUpperFlag
-  sta PlaidStage_State
-
-@Forever:
-  clc
-  jmp @Forever
-
-LoadSprites:
+InitSprites:
   ; $00 - X value (pixels)
   ; X - array index (always)
 
@@ -223,11 +227,10 @@ LoadSprites:
 
   rts
 
-
 ; Draws a 1 pixel border around the grid cells.
 ; Each cell is surrounded by 1px of black, so two adjacent cells get a 2 pixel
 ; border. We draw a seperate border around the outside to get uniformity.
-DrawOuterBorder:
+PlaidStage_DrawOuterBorder:
 
 TopRow:
   lda #$20
@@ -330,10 +333,21 @@ StageDispatch:
 Menu:
   rts ; Not implemented
 
+PlaidStage_Init:
+  jsr PlaidStage_LoadPalettes
+  jsr PlaidStage_LoadBackground
+  jsr PlaidStage_DrawOuterBorder
+  jsr InitSprites
+
+  lda PlaidStage_UpdateUpperFlag
+  sta PlaidStage_State
+  rts
+
 PlaidStage:
   lda PlaidStage_State
   jsr JumpEngine
 
+  .word PlaidStage_Init
   .word PlaidStage_UpdateUpper
   .word PlaidStage_UpdateLower
   .word PlaidStage_Idle
