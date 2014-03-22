@@ -44,6 +44,10 @@ _PaletteChoice:
 .define GridBg      $B0
 .define GridPalette $C0
 
+.define SpriteData      $0200
+.define SpriteData_High #$02
+.define SpriteData_Low  #$00
+
 Boot:
   sei
   cld
@@ -159,62 +163,50 @@ LoadSprites:
 @Row:
   ; Top left
   tya
-  sta $0200, x ; Store Y value
-  inx
+  sta SpriteData+$00, x ; Store Y value
   lda #$2C
-  sta $0200, x ; Store transparent tile
-  inx
-  sta $0200, x ; Store arbitrary palette etc.
-  inx
+  sta SpriteData+$01, x ; Store transparent tile
+  sta SpriteData+$02, x ; Store arbitrary palette etc.
   lda $00
-  sta $0200, x ; Store X value
-  inx
+  sta SpriteData+$03, x ; Store X value
 
   ; Top right
   tya
-  sta $0200, x ; Store Y value
-  inx
+  sta SpriteData+$04, x ; Store Y value
   lda #$2C
-  sta $0200, x ; Store transparent tile
-  inx
+  sta SpriteData+$05, x ; Store transparent tile
   lda #$00
-  sta $0200, x ; Store arbitrary palette etc.
-  inx
+  sta SpriteData+$06, x ; Store arbitrary palette etc.
   lda $00
   adc #$08 ; 8 pixels
-  sta $0200, x ; Store X value
-  inx
+  sta SpriteData+$07, x ; Store X value
 
   ; Bottom left
   tya
   adc #$08 ; 8 pixels
-  sta $0200, x ; Store Y value
-  inx
+  sta SpriteData+$08, x ; Store Y value
   lda #$2C
-  sta $0200, x ; Store transparent tile
-  inx
+  sta SpriteData+$09, x ; Store transparent tile
   lda #$00
-  sta $0200, x ; Store arbitrary palette etc.
-  inx
+  sta SpriteData+$0A, x ; Store arbitrary palette etc.
   lda $00
-  sta $0200, x ; Store X value
-  inx
+  sta SpriteData+$0B, x ; Store X value
 
   ; Bottom right
   tya
   adc #$08 ; 8 pixels
-  sta $0200, x ; Store Y value
-  inx
+  sta SpriteData+$0C, x ; Store Y value
   lda #$2C
-  sta $0200, x ; Store transparent tile
-  inx
+  sta SpriteData+$0D, x ; Store transparent tile
   lda #$00
-  sta $0200, x ; Store arbitrary palette etc.
-  inx
+  sta SpriteData+$0E, x ; Store arbitrary palette etc.
   lda $00
   adc #$08 ; 8 pixels
-  sta $0200, x ; Store X value
-  inx
+  sta SpriteData+$0F, x ; Store X value
+
+  txa
+  adc #$10
+  tax
 
   lda $00
   adc #$20 ; 32 pixels
