@@ -304,10 +304,11 @@ InitVertBorder:
   rts
 
 Vsync:
+  clc
   jsr StageDispatch
 
   ; urg, figure out scrolling...
-  lda #$02
+  lda #$00
   sta $2005
   lda #$00
   sta $2005
@@ -544,9 +545,9 @@ JumpEngine:
   sta $04
   pla
   sta $05
-  iny
 
   ; Store it somewhere we can indirectly jump with
+  iny
   lda ($04), y
   sta $06
   iny
