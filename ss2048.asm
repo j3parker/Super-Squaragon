@@ -312,11 +312,11 @@ Vsync:
   sta $2001
 
 
-
+  ; DMA the sprite data to the PPU
   lda $2002
-  lda #$00
+  lda SpriteData_Low
   sta $2003
-  lda #$02
+  lda SpriteData_High
   sta $4014
   rti
 
