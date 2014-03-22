@@ -29,6 +29,17 @@ _PaletteIndex:
 _PaletteChoice:
   .byte $00, $00, $00, $55, $55, $55, $AA, $AA, $AA, $FF, $FF
 
+.define Stage                      $10
+.define MenuFlag                   #$00
+.define PlaidStageFlag             #$01
+.define CPUFlag                    #$02
+
+.define PlaidStage_State           $11
+.define PlaidStage_UpdateUpperFlag #$00
+.define PlaidStage_UpdateLowerFlag #$01
+.define PlaidStage_IdleFlag        #$02
+
+
 .define Grid        $A0
 .define GridBg      $B0
 .define GridPalette $C0
@@ -124,6 +135,11 @@ InitAttrTable:
 
   lda #%00011010
   sta $2001
+
+  lda PlaidStageFlag
+  sta Stage
+  lda PlaidStage_UpdateUpperFlag
+  sta PlaidStage_State
 
 @Forever:
   clc
@@ -288,8 +304,7 @@ InitVertBorder:
   rts
 
 Vsync:
-  ldx #$21
-  jsr UpdateTiles
+  jsr StageDispatch
 
   ; urg, figure out scrolling...
   lda #$02
@@ -311,6 +326,42 @@ Vsync:
   lda #$02
   sta $4014
   rti
+
+StageDispatch:
+  lda Stage
+  jsr JumpEngine
+
+  .word Menu
+  .word PlaidStage
+
+Menu:
+  rts ; Not implemented
+
+PlaidStage:
+  lda PlaidStage_State
+  jsr JumpEngine
+
+  .word PlaidStage_UpdateUpper
+  .word PlaidStage_UpdateLower
+  .word PlaidStage_Idle
+
+PlaidStage_UpdateUpper:
+  ldx #$21
+  jsr UpdateTiles
+  lda PlaidStage_UpdateLowerFlag
+  sta PlaidStage_State
+  rts
+
+PlaidStage_UpdateLower:
+  ldx #$22
+  jsr UpdateTiles
+  lda PlaidStage_IdleFlag
+  sta PlaidStage_State
+  rts
+
+PlaidStage_Idle:
+  ; read gamepads etc.
+  rts
 
 _TilePattern:
 .byte $00, $01, $01, $02
@@ -353,23 +404,20 @@ UpdateTiles:
   jsr UpdateTiles_SingleRow
 
   ; Cycle through _TilePattern rows
-  inx
-  inx
-  inx
-  inx
+  txa
+  adc #$04
+  tax
   cpx #$10
   bne @CheckIfDone
   ldx #$00
-  iny
+  tya
+  adc #$04
+  tay
   sty $02
 
 @CheckIfDone:
-  ; Are we done?
   lda $00
   cmp $03
-  bne @Row
-  lda $01
-  cmp #$08
   bne @Row
 
   ; Update attribute tables
@@ -483,6 +531,29 @@ UpdateTiles_SingleRow:
   sta $2007
 
   rts
+
+JumpEngine:
+  ; This code was stolen from Super Mario Bros/the smbdis.asm disassembly.
+
+  ; Put jump table index into Y
+  asl
+  tay
+
+  ; Pull the callers return PC from the top of the stack. The jump table is just after it
+  pla
+  sta $04
+  pla
+  sta $05
+  iny
+
+  ; Store it somewhere we can indirectly jump with
+  lda ($04), y
+  sta $06
+  iny
+  lda ($04), y
+  sta $07
+
+  jmp ($06)
 
 .segment "VECTORS"
   .word Vsync
