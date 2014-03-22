@@ -11,22 +11,6 @@ _Palettes:
   .byte $0F, $20, $16, $05
   .byte $0F, $20, $06, $06
 
-_Sprites:
-  .byte $48, $04, $00, $68
-  .byte $48, $05, $00, $70
-  .byte $50, $06, $00, $68
-  .byte $50, $07, $00, $70
-
-  .byte $48, $00, $00, $48
-  .byte $48, $01, $00, $50
-  .byte $50, $02, $00, $48
-  .byte $50, $03, $00, $50
-
-  .byte $88, $10, $01, $A8
-  .byte $88, $11, $01, $B0
-  .byte $90, $12, $01, $A8
-  .byte $90, $13, $01, $B0
-
   ; This is the power of two for the tile modulo 3, multiplied by 8.
   ; It gives us the offset into the bg pattern table to get our bg tiles
   ; for a cell. There are 8 tiles to build up one cell.
@@ -45,7 +29,9 @@ _PaletteIndex:
 _PaletteChoice:
   .byte $00, $00, $00, $55, $55, $55, $AA, $AA, $AA, $FF, $FF
 
-.define RNG_SEED $20
+.define Grid        $A0
+.define GridBg      $B0
+.define GridPalette $C0
 
 Boot:
   sei
@@ -131,51 +117,7 @@ InitAttrTable:
   cpx #$40
   bne @Loop
 
-  ; Update all tiles to be empty
-  lda #$00
-  ldy #$00
-@Row:
-  ldx #$00
-@Column:
-  jsr UpdateTile
-  inx
-  cpx #$04
-  bne @Column
-  iny
-  cpy #$04
-  bne @Row
-
-
-  ; This is some hardcoded setting of coloured tiles
-  lda #$02
-  ldx #$01
-  ldy #$00
-  jsr UpdateTile
-  lda #$01
-  ldx #$00
-  ldy #$00
-  jsr UpdateTile
-  lda #$05
-  ldx #$03
-  ldy #$02
-  jsr UpdateTile
-
-LoadSprites:
-  ldx #$00
-@Loop:
-  lda _Sprites, x
-  sta $0200, x
-  inx
-  cpx #$30
-  bne @Loop
-
-  ; urg, figure out scrolling...
-  lda #$00
-  sta $2005
-  lda #$FF
-  sta $2005
-  lda #$00
-  sta $2000
+  jsr LoadSprites
 
   lda #%10010000
   sta $2000
@@ -183,9 +125,96 @@ LoadSprites:
   lda #%00011010
   sta $2001
 
-
 @Forever:
+  clc
   jmp @Forever
+
+LoadSprites:
+  ; $00 - X value (pixels)
+  ; X - array index (always)
+
+  clc
+  ldy #$47
+
+  ldx #$00 ; byte index into sprite data
+@Column:
+  lda #$47 ; X: 64 + 8 pixels from left
+  sta $00
+@Row:
+  ; Top left
+  tya
+  sta $0200, x ; Store Y value
+  inx
+  lda #$2C
+  sta $0200, x ; Store transparent tile
+  inx
+  sta $0200, x ; Store arbitrary palette etc.
+  inx
+  lda $00
+  sta $0200, x ; Store X value
+  inx
+
+  ; Top right
+  tya
+  sta $0200, x ; Store Y value
+  inx
+  lda #$2C
+  sta $0200, x ; Store transparent tile
+  inx
+  lda #$00
+  sta $0200, x ; Store arbitrary palette etc.
+  inx
+  lda $00
+  adc #$08 ; 8 pixels
+  sta $0200, x ; Store X value
+  inx
+
+  ; Bottom left
+  tya
+  adc #$08 ; 8 pixels
+  sta $0200, x ; Store Y value
+  inx
+  lda #$2C
+  sta $0200, x ; Store transparent tile
+  inx
+  lda #$00
+  sta $0200, x ; Store arbitrary palette etc.
+  inx
+  lda $00
+  sta $0200, x ; Store X value
+  inx
+
+  ; Bottom right
+  tya
+  adc #$08 ; 8 pixels
+  sta $0200, x ; Store Y value
+  inx
+  lda #$2C
+  sta $0200, x ; Store transparent tile
+  inx
+  lda #$00
+  sta $0200, x ; Store arbitrary palette etc.
+  inx
+  lda $00
+  adc #$08 ; 8 pixels
+  sta $0200, x ; Store X value
+  inx
+
+  lda $00
+  adc #$20 ; 32 pixels
+  sta $00
+  cmp #$C7 ; Past last column
+  bne @Row
+
+  tya
+  clc
+  adc #$20 ; 32 pixels
+  tay
+  cmp #$C7 ; Past last row
+  bne @Column
+
+  rts
+
 
 ; Draws a 1 pixel border around the grid cells.
 ; Each cell is surrounded by 1px of black, so two adjacent cells get a 2 pixel
@@ -235,6 +264,7 @@ BottomRow:
   ldx #$21
   ldy #$18
   jsr InitVertBorder
+  rts
 
 ; Helper function for DrawOuterBorder
 InitVertBorder:
@@ -257,163 +287,202 @@ InitVertBorder:
   pla
   rts
 
-
-
-
-; Inputs:
-;   A - color ($00, $01, $02)
-;   X - X index
-;   Y - Y index
-UpdateTile:
-  sta $00
-  stx $01
-  sty $02
-
-  tax
-  lda _PaletteIndex, x
-  sta $03
-  lda _PaletteChoice, x
-  sta $04
-
-  ; Get high bit for bg
-  lda #$21
-  cpy #$00
-  beq @Skip
-  cpy #$01
-  beq @Skip
-  clc
-  adc #$01
-@Skip:
-  sta $2006
-  sta $05
-
-  ; Offset for X pos
-  lda #$08
-  ldx $01
-@Loop:
-  cpx #$00
-  beq @Done
-  dex
-  adc #$03
-  jmp @Loop
-@Done:
-  ; Offset for odd rows
-  ldy $02
-  beq @EvenRow
-  cpy #$02
-  beq @EvenRow
-  clc
-  adc #$80
-@EvenRow:
-  sta $2006
-  sta $06
-
-  lda $03
-  jsr Top
-
-  tax
-  lda $05
-  sta $2006
-  lda $06
-  clc
-  adc #$20
-  sta $2006
-  sta $06
-  txa
-  jsr Middle
-
-  tax
-  lda $05
-  sta $2006
-  lda $06
-  clc
-  adc #$20
-  sta $2006
-  sta $06
-  txa
-  jsr Middle
-
-  tax
-  lda $05
-  sta $2006
-  lda $06
-  clc
-  adc #$20
-  sta $2006
-  txa
-  jsr Bottom
-
-  ; Update attr table with colour
-  lda #$23
-  sta $2006
-  clc
-  lda $01
-  adc #$D2
-  sta $05
-  lda $02
-  asl
-  asl
-  asl
-  adc $05
-  sta $2006
-  lda $04
-
-  sta $2007
-
-@Exit:
-  lda $00
-  ldx $01
-  ldy $02
-  rts
-
-Top:
-  sta $2007
-  clc
-  adc #$01
-  sta $2007
-  sta $2007
-  adc #$01
-  sta $2007
-  sbc #$01
-  rts
-
-Middle:
-  clc
-  adc #$07
-  sta $2007
-  tay
-  lda $03
-  ror
-  ror
-  ror
-  adc #$20
-  sta $2007
-  sta $2007
-  tya
-  sbc #$03
-  sta $2007
-  sbc #$03
-  rts
-
-Bottom:
-  clc
-  adc #$06
-  sta $2007
-  sbc #$00
-  sta $2007
-  sta $2007
-  sbc #$01
-  sta $2007
-  sbc #$05
-  rts
-
 Vsync:
+  ldx #$21
+  jsr UpdateTiles
+
+  ; urg, figure out scrolling...
+  lda #$02
+  sta $2005
+  lda #$00
+  sta $2005
+  lda #%10010000
+  sta $2000
+
+  ; TODO first the bits on the left control color intensities - i.e. disco mode
+  lda #%00011010
+  sta $2001
+
+
+
   lda $2002
   lda #$00
   sta $2003
   lda #$02
   sta $4014
   rti
+
+_TilePattern:
+.byte $00, $01, $01, $02
+.byte $07, $20, $20, $03
+.byte $07, $20, $20, $03
+.byte $06, $05, $05, $04
+
+UpdateTiles:
+  ; Input: X: high byte PPU start
+  ; $00 - high byte PPU addr
+  ; $01 - low byte PPU addr
+  ; $02 - gridcell we are on
+  ; $03 - high byte PPU target
+  stx $00
+  lda #$08
+  sta $01
+  lda #$00
+  sta $02
+  inx
+  stx $03
+  ldx #$00
+
+@Row:
+  ; Position the PPU r/w register and pre-increment it for the next loop
+  lda $00
+  sta $2006
+  tay
+  lda $01
+  sta $2006
+  ; Add 8 tiles to get to the right edge of screen, 8 tiles padding on left on next row
+  adc #$20 ; 8 tile padding on both ends = 16 ($10) plus $10 for the board width
+  sta $01
+  tya
+  adc #$00
+  sta $00
+
+  ; x: _TilePattern row
+  ; y: ($02) gridcell index
+  ldy $02
+  jsr UpdateTiles_SingleRow
+
+  ; Cycle through _TilePattern rows
+  inx
+  inx
+  inx
+  inx
+  cpx #$10
+  bne @CheckIfDone
+  ldx #$00
+  iny
+  sty $02
+
+@CheckIfDone:
+  ; Are we done?
+  lda $00
+  cmp $03
+  bne @Row
+  lda $01
+  cmp #$08
+  bne @Row
+
+  ; Update attribute tables
+  lda #$23
+  sta $2006
+  lda #$D2 ; C0 + $12 (i.e. top + left initial pad)
+  ldy #$00 ; grid index
+  ldx $00
+  cpx #$22 ; if we were doing the lower half the high byte now points to start of lower half
+  beq @SaveAttrLow
+  clc
+  adc #$10 ; we are in the lower half of the grid, add 16 metatiles
+  ldy #$08 ; grid index
+@SaveAttrLow:
+  sta $00
+  sta $2006
+
+  ; Send a row of attributes
+  ldx Grid, y
+  lda _PaletteChoice, x
+  sta $2007
+  ldx Grid+$01, y
+  lda _PaletteChoice, x
+  sta $2007
+  ldx Grid+$02, y
+  lda _PaletteChoice, x
+  sta $2007
+  ldx Grid+$03, y
+  lda _PaletteChoice, x
+  sta $2007
+
+  ; Reposition to next row
+  lda #$23
+  sta $2006
+  lda $00
+  clc
+  adc #$08
+  sta $2006
+
+  ; Send a row of attributes
+  ldx Grid+$04, y
+  lda _PaletteChoice, x
+  sta $2007
+  ldx Grid+$05, y
+  lda _PaletteChoice, x
+  sta $2007
+  ldx Grid+$06, y
+  lda _PaletteChoice, x
+  sta $2007
+  ldx Grid+$07, y
+  lda _PaletteChoice, x
+  sta $2007
+
+  rts
+
+UpdateTiles_SingleRow:
+  ; Send a row
+  ; x holds tilepattern index
+  ; y holds bg selection index
+@Loop:
+  lda _TilePattern, x
+  adc GridBg, y
+  sta $2007
+  lda _TilePattern+$01, x
+  adc GridBg, y
+  sta $2007
+  lda _TilePattern+$02, x
+  adc GridBg, y
+  sta $2007
+  lda _TilePattern+$03, x
+  adc GridBg, y
+  sta $2007
+
+  lda _TilePattern, x
+  adc GridBg+$01, y
+  sta $2007
+  lda _TilePattern+$01, x
+  adc GridBg+$01, y
+  sta $2007
+  lda _TilePattern+$02, x
+  adc GridBg+$01, y
+  sta $2007
+  lda _TilePattern+$03, x
+  adc GridBg+$01, y
+  sta $2007
+
+  lda _TilePattern, x
+  adc GridBg+$02, y
+  sta $2007
+  lda _TilePattern+$01, x
+  adc GridBg+$02, y
+  sta $2007
+  lda _TilePattern+$02, x
+  adc GridBg+$02, y
+  sta $2007
+  lda _TilePattern+$03, x
+  adc GridBg+$02, y
+  sta $2007
+
+  lda _TilePattern, x
+  adc GridBg+$03, y
+  sta $2007
+  lda _TilePattern+$01, x
+  adc GridBg+$03, y
+  sta $2007
+  lda _TilePattern+$02, x
+  adc GridBg+$03, y
+  sta $2007
+  lda _TilePattern+$03, x
+  adc GridBg+$03, y
+  sta $2007
+
+  rts
 
 .segment "VECTORS"
   .word Vsync
