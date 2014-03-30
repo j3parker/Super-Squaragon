@@ -1,6 +1,6 @@
 _Palettes:
   ; Background
-  .byte $2D, $3D, $31, $32
+  .byte $2D, $3D, $32, $31
   .byte $2D, $21, $22, $11
   .byte $2D, $12, $13, $03
   .byte $2D, $01, $04, $10
@@ -18,7 +18,7 @@ _Palettes:
   ; determined by _PaletteChoice. The bg tiles are stored at an offset of 0x08
   ; from the first cell bg tile.
 _PaletteIndex:
-  .byte $00, $08, $10, $00, $08, $10, $00, $08, $10, $00, $08
+  .byte $00, $08, $10, $00, $08, $10, $00, $08, $10, $00, $08, $08
 
   ; This is the power of two for the tile divided by 3, and then those
   ; two bits are replicated 4 times. Each two bits sets the palette of a
@@ -27,7 +27,7 @@ _PaletteIndex:
   ; uses palette 2 (the third palette) and therefore we write 0xAA to the
   ; attribute table.
 _PaletteChoice:
-  .byte $00, $00, $00, $55, $55, $55, $AA, $AA, $AA, $FF, $FF
+  .byte $00, $00, $00, $55, $55, $55, $AA, $AA, $AA, $FF, $FF, $FF
 
 .define Stage                      $10
 .define MenuFlag                   #$00
@@ -90,6 +90,7 @@ vblankwait2:      ; Second wait for vblank, PPU is ready after this
 
   jsr PlaidStage_Init
 
+
   lda #%10010000
   sta $2000
 
@@ -136,6 +137,7 @@ PlaidStage_LoadBackground:
   bne @Loop
 
   ldy #%11001001 ; Make this $FF to choose only the last palette
+  ;ldy #%11011000
 
   ; Init the attr table
   ; Loads a checkerboard pattern into the attribute table (palette choices)
@@ -161,14 +163,14 @@ InitSprites:
   ldy #$47
 
   ldx #$00 ; byte index into sprite data
-@Column:
+@Rows:
   lda #$47 ; X: 64 + 8 pixels from left
   sta $00
-@Row:
+@Columns:
   ; Top left
   tya
   sta SpriteData+$00, x ; Store Y value
-  lda #$2C
+  lda #$00
   sta SpriteData+$01, x ; Store transparent tile
   sta SpriteData+$02, x ; Store arbitrary palette etc.
   lda $00
@@ -177,7 +179,7 @@ InitSprites:
   ; Top right
   tya
   sta SpriteData+$04, x ; Store Y value
-  lda #$2C
+  lda #$00
   sta SpriteData+$05, x ; Store transparent tile
   lda #$00
   sta SpriteData+$06, x ; Store arbitrary palette etc.
@@ -189,7 +191,7 @@ InitSprites:
   tya
   adc #$08 ; 8 pixels
   sta SpriteData+$08, x ; Store Y value
-  lda #$2C
+  lda #$00
   sta SpriteData+$09, x ; Store transparent tile
   lda #$00
   sta SpriteData+$0A, x ; Store arbitrary palette etc.
@@ -200,7 +202,7 @@ InitSprites:
   tya
   adc #$08 ; 8 pixels
   sta SpriteData+$0C, x ; Store Y value
-  lda #$2C
+  lda #$00
   sta SpriteData+$0D, x ; Store transparent tile
   lda #$00
   sta SpriteData+$0E, x ; Store arbitrary palette etc.
@@ -213,17 +215,18 @@ InitSprites:
   tax
 
   lda $00
+  clc
   adc #$20 ; 32 pixels
   sta $00
   cmp #$C7 ; Past last column
-  bne @Row
+  bne @Columns
 
   tya
   clc
   adc #$20 ; 32 pixels
   tay
   cmp #$C7 ; Past last row
-  bne @Column
+  bne @Rows
 
   rts
 
@@ -300,20 +303,21 @@ InitVertBorder:
 
 Vsync:
   clc
+
   jsr StageDispatch
 
   ; urg, figure out scrolling...
   lda #$00
   sta $2005
-  lda #$00
   sta $2005
+  sta $2006
+  sta $2006
   lda #%10010000
   sta $2000
 
   ; TODO first the bits on the left control color intensities - i.e. disco mode
   lda #%00011010
   sta $2001
-
 
   ; DMA the sprite data to the PPU
   lda $2002
@@ -322,6 +326,60 @@ Vsync:
   lda SpriteData_High
   sta $4014
   rti
+
+; A - vert grid index
+; X - horiz grid index
+; Y - power of two
+SetTile:
+  ; Index is x + 4*y (not the regs)
+  asl
+  asl
+  sta $00
+  txa
+  clc
+  adc $00
+  tax
+
+  ; Store Bg info
+  sty Grid, x
+  lda _PaletteIndex, y
+  sta GridBg, x
+
+  ; Update sprite
+  ; 4 bytes per sprite, 4 sprites per tile
+  txa
+  asl
+  asl
+  asl
+  asl
+  tax
+
+  ; 4 tiles per power of two
+  tya
+  asl
+  asl
+
+  ; Set sprite graphics
+  sta SpriteData+$01, x
+  adc #$01
+  sta SpriteData+$05, x
+  adc #$01
+  sta SpriteData+$09, x
+  adc #$01
+  sta SpriteData+$0D, x
+
+  lda #$00 ; black text
+  cpy #$05
+  bcc @StoreSpritePalette
+  lda #$01
+@StoreSpritePalette:
+  sta SpriteData+$02, x
+  sta SpriteData+$06, x
+  sta SpriteData+$0A, x
+  sta SpriteData+$0E, x
+
+  rts
+
 
 StageDispatch:
   lda Stage
@@ -367,13 +425,66 @@ PlaidStage_UpdateLower:
   rts
 
 PlaidStage_Idle:
-  ; read gamepads etc.
+  lda #$00
+  ldx #$01
+  ldy $FF
+  iny
+  cpy #$B
+  bne @Fff
+  ldy #$00
+@Fff:
+  sty $FF
+  jsr SetTile
+  lda #$00
+  ldx #$02
+  ldy #$02
+  jsr SetTile
+  lda #$00
+  ldx #$03
+  ldy #$03
+  jsr SetTile
+  lda #$01
+  ldx #$00
+  ldy #$04
+  jsr SetTile
+  lda #$01
+  ldx #$01
+  ldy #$05
+  jsr SetTile
+  lda #$01
+  ldx #$02
+  ldy #$06
+  jsr SetTile
+  lda #$01
+  ldx #$03
+  ldy #$07
+  jsr SetTile
+  lda #$02
+  ldx #$00
+  ldy #$08
+  jsr SetTile
+  lda #$02
+  ldx #$01
+  ldy #$09
+  jsr SetTile
+  lda #$02
+  ldx #$02
+  ldy #$0A
+  jsr SetTile
+  lda #$02
+  ldx #$03
+  ldy #$0B
+  jsr SetTile
+
+  lda PlaidStage_UpdateUpperFlag
+  sta PlaidStage_State
+
   rts
 
 _TilePattern:
 .byte $00, $01, $01, $02
-.byte $07, $20, $20, $03
-.byte $07, $20, $20, $03
+.byte $07, $18, $18, $03
+.byte $07, $18, $18, $03
 .byte $06, $05, $05, $04
 
 UpdateTiles:
@@ -386,10 +497,16 @@ UpdateTiles:
   lda #$08
   sta $01
   lda #$00
+  cpx #$21
+  beq @StoreIndex
+  clc
+  adc #$08
+@StoreIndex:
   sta $02
   inx
   stx $03
   ldx #$00
+  clc
 
 @Row:
   ; Position the PPU r/w register and pre-increment it for the next loop
@@ -418,6 +535,7 @@ UpdateTiles:
   bne @CheckIfDone
   ldx #$00
   tya
+  clc
   adc #$04
   tay
   sty $02
