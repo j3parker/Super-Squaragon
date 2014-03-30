@@ -6,7 +6,7 @@ _Palettes:
   .byte $2D, $01, $04, $10
 
   ; Sprite
-  .byte $0F, $2D, $36, $37
+  .byte $0F, $0F, $36, $37
   .byte $0F, $20, $27, $26
   .byte $0F, $20, $16, $05
   .byte $0F, $20, $06, $06
