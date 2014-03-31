@@ -40,10 +40,26 @@ _PaletteChoice:
 .define PlaidStage_UpdateLowerFlag #$02
 .define PlaidStage_IdleFlag        #$03
 
+.define Controller_A      $12
+.define Controller_B      $13
+.define Controller_Select $14
+.define Controller_Start  $15
+.define Controller_Up     $16
+.define Controller_Down   $17
+.define Controller_Left   $18
+.define Controller_Right  $19
+.define Controller_Moving $1A
+
+.define Movement_dX       $1B
+.define Movement_dY       $1C
+
+.define NumEmpty          $1D
+.define FailedMove        $1E
+
 
 .define Grid        $A0
 .define GridBg      $B0
-.define GridPalette $C0
+.define GridScratch $C0
 
 .define SpriteData      $0200
 .define SpriteData_High #$02
@@ -100,6 +116,85 @@ vblankwait2:      ; Second wait for vblank, PPU is ready after this
 @Forever:
   clc
   jmp @Forever
+
+ReadController:
+  lda #$01
+  sta $4016
+  lda #$00
+  sta $4016
+
+  lda $4016
+  and #$01
+  sta Controller_A
+  lda $4016
+  and #$01
+  sta Controller_B
+  lda $4016
+  and #$01
+  sta Controller_Select
+  lda $4016
+  and #$01
+  sta Controller_Start
+  lda $4016
+  and #$01
+  sta Controller_Up
+  sta Controller_Moving
+  lda $4016
+  and #$01
+  sta Controller_Down
+  ora Controller_Moving
+  sta Controller_Moving
+  lda $4016
+  and #$01
+  sta Controller_Left
+  ora Controller_Moving
+  sta Controller_Moving
+  lda $4016
+  and #$01
+  sta Controller_Right
+  ora Controller_Moving
+  sta Controller_Moving
+
+  lda Controller_Up
+  bne @Up
+  lda Controller_Down
+  bne @Down
+  lda Controller_Left
+  bne @Left
+  lda Controller_Right
+  bne @Right
+
+  lda #$00
+  sta Movement_dX
+  sta Movement_dY
+  rts
+
+@Up:
+  lda #$00
+  sta Movement_dX
+  lda #$FF
+  sta Movement_dY
+  rts
+@Down:
+  lda #$00
+  sta Movement_dX
+  lda #$01
+  sta Movement_dY
+  rts
+@Left:
+  lda #$FF
+  sta Movement_dX
+  lda #$00
+  sta Movement_dY
+  rts
+@Right:
+  lda #$01
+  sta Movement_dX
+  lda #$00
+  sta Movement_dY
+  rts
+
+
 
   ; We will want to change this based on the level later
 PlaidStage_LoadPalettes:
@@ -184,11 +279,13 @@ InitSprites:
   lda #$00
   sta SpriteData+$06, x ; Store arbitrary palette etc.
   lda $00
+  clc
   adc #$08 ; 8 pixels
   sta SpriteData+$07, x ; Store X value
 
   ; Bottom left
   tya
+  clc
   adc #$08 ; 8 pixels
   sta SpriteData+$08, x ; Store Y value
   lda #$00
@@ -200,6 +297,7 @@ InitSprites:
 
   ; Bottom right
   tya
+  clc
   adc #$08 ; 8 pixels
   sta SpriteData+$0C, x ; Store Y value
   lda #$00
@@ -207,10 +305,12 @@ InitSprites:
   lda #$00
   sta SpriteData+$0E, x ; Store arbitrary palette etc.
   lda $00
+  clc
   adc #$08 ; 8 pixels
   sta SpriteData+$0F, x ; Store X value
 
   txa
+  clc
   adc #$10
   tax
 
@@ -397,6 +497,12 @@ PlaidStage_Init:
   jsr PlaidStage_DrawOuterBorder
   jsr InitSprites
 
+  lda #$00
+  ldx #$00
+  ldy #$01
+  sty $FF
+  jsr SetTile
+
   lda PlaidStage_UpdateUpperFlag
   sta PlaidStage_State
   rts
@@ -425,55 +531,64 @@ PlaidStage_UpdateLower:
   rts
 
 PlaidStage_Idle:
-  lda #$00
-  ldx #$01
+  jsr ReadController
+
+  lda Controller_A
+  beq @HandleMovement
+
+  ; Increment num
   ldy $FF
   iny
-  cpy #$B
-  bne @Fff
-  ldy #$00
-@Fff:
+  cpy #$0B
+  bne @Kk
+  ldy #$01
+@Kk:
   sty $FF
+
+@HandleMovement:
+
+  lda Controller_Moving
+  beq @Done
+
+  lda $FD
+  ldx $FE
+  ldy #$00
   jsr SetTile
-  lda #$00
-  ldx #$02
-  ldy #$02
-  jsr SetTile
-  lda #$00
-  ldx #$03
-  ldy #$03
-  jsr SetTile
-  lda #$01
-  ldx #$00
-  ldy #$04
-  jsr SetTile
-  lda #$01
-  ldx #$01
-  ldy #$05
-  jsr SetTile
-  lda #$01
-  ldx #$02
-  ldy #$06
-  jsr SetTile
-  lda #$01
-  ldx #$03
-  ldy #$07
-  jsr SetTile
-  lda #$02
-  ldx #$00
-  ldy #$08
-  jsr SetTile
-  lda #$02
-  ldx #$01
-  ldy #$09
-  jsr SetTile
-  lda #$02
-  ldx #$02
-  ldy #$0A
-  jsr SetTile
-  lda #$02
-  ldx #$03
-  ldy #$0B
+
+  lda $FE
+  clc
+  adc Movement_dX
+  tay
+  cpy #$FF
+  bne @A
+  iny
+@A:
+  cpy #$04
+  bne @B
+  dey
+@B:
+  sty $FE
+
+  lda $FD
+  clc
+  adc Movement_dY
+  tay
+  cpy #$FF
+  bne @C
+  iny
+@C:
+  cpy #$04
+  bne @D
+  dey
+@D:
+  sty $FD
+
+  ; .........
+
+@Done:
+  lda $FD
+  ldx $FE
+  ldy $FF
   jsr SetTile
 
   lda PlaidStage_UpdateUpperFlag
@@ -683,4 +798,4 @@ JumpEngine:
 .segment "VECTORS"
   .word Vsync
   .word Boot
-  .word 0
+  .word PlaidStage_Idle
